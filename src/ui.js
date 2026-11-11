@@ -80,7 +80,12 @@ export class UI {
         <button class="btn primary" id="buildBtn" data-a="library">${icon('plus')} BUILD</button>
       </div>
       <div class="placebar hidden" id="placebar">
-        <button class="btn primary placebtn" data-a="place">${icon('check')} PLACE</button>
+        <button class="btn primary placebtn" data-a="place">${icon('check')} PLACE<span id="placeCount"></span></button>
+        <div class="row pat">
+          <button class="btn" data-a="patShape" id="patShape" aria-label="Repeat shape"></button>
+          <button class="btn" data-a="patCount" id="patCount" aria-label="How many"></button>
+          <button class="btn" data-a="patTall" id="patTall" aria-label="How tall"></button>
+        </div>
         <div class="row">
           <button class="btn" data-a="ghostRotL" aria-label="Rotate left">${icon('rotL')}</button>
           <button class="btn" data-a="ghostRotR" aria-label="Rotate right">${icon('rotR')}</button>
@@ -185,6 +190,15 @@ export class UI {
     if (this.build.mode === 'place') this.setPlaceLabel();
   }
 
+  updatePattern() {
+    const p = this.build.pattern;
+    $('#patShape').innerHTML = `<small>REPEAT</small>${{ row: 'ROW', room: 'ROOM', grid: 'GRID' }[p.shape]}`;
+    $('#patCount').innerHTML = `<small>${p.shape === 'row' ? 'PIECES' : 'PER SIDE'}</small>×${p.count}`;
+    $('#patTall').innerHTML = `<small>LEVELS</small>↑${p.tall}`;
+    const n = this.build.patternSize;
+    $('#placeCount').textContent = n > 1 ? ` ×${n}` : '';
+  }
+
   setPlaceLabel() {
     const name = this._placeName || '';
     const touch = matchMedia('(pointer:coarse)').matches;
@@ -244,6 +258,7 @@ export class UI {
       if (m === 'place') {
         this._placeName = def.name;
         this.setPlaceLabel();
+        this.updatePattern();
       }
       this.layout();
     });
@@ -252,6 +267,7 @@ export class UI {
       $('#redoBtn').disabled = !b.future.length;
     });
     b.on('placed', () => this.flashPlace());
+    b.on('pattern', () => this.updatePattern());
   }
 
   actions = {
@@ -259,6 +275,23 @@ export class UI {
     play() { if (!this.app.settings.bird) this.openBirdPicker(true); else this.showMenu(false); },
     pickBird() { this.openBirdPicker(false); },
     shiftLock() { this.app.setShiftLock(!this.app.isShiftLock()); },
+    patShape() {
+      const order = ['row', 'room', 'grid'];
+      const p = this.build.pattern;
+      const next = order[(order.indexOf(p.shape) + 1) % order.length];
+      this.build.setPattern({ shape: next, count: p.count === 1 && next !== 'row' ? 2 : p.count });
+      this.toast({ row: 'Row — pieces side by side', room: 'Room — 4 walls around a square', grid: 'Grid — fills a square (great for floors)' }[next]);
+    },
+    patCount() {
+      const steps = [1, 2, 3, 4, 5, 6, 8, 10];
+      const p = this.build.pattern;
+      this.build.setPattern({ count: steps[(steps.indexOf(p.count) + 1) % steps.length] });
+    },
+    patTall() {
+      const p = this.build.pattern;
+      this.build.setPattern({ tall: p.tall % 4 + 1 });
+      this.toast(p.tall === 1 ? '1 level' : `${p.tall} levels tall`);
+    },
     newWorld() {
       const fresh = () => { this.app.newWorld(); this.toast('New world created'); this.actions.play.call(this); };
       if (this.app.hasSave()) this.confirm('Create a new world?', 'Your current world on this device will be replaced with a fresh map.', 'Create World', fresh);

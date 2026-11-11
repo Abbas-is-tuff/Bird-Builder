@@ -144,6 +144,7 @@ let shiftLock = false;
 function setShiftLock(on) {
   shiftLock = on;
   input.shiftLock = on;
+  build.aimMode = on;
   rig.shoulderGoal = on ? 1 : 0;
   if (on) { rig.pitch = Math.min(rig.pitch, 0.45); rig.dist = Math.min(Math.max(rig.dist, 7), 16); }
   const fine = matchMedia('(pointer:fine)').matches;

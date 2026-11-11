@@ -24,6 +24,8 @@ export class BuildSystem {
     this.listeners = {};
     this.raycaster = new THREE.Raycaster();
     this.rotOffset = 0;
+    // repeat pattern for fast building: row / grid / room, count per side, levels tall
+    this.pattern = { shape: 'row', count: 1, tall: 1 };
     this.bird = null; // set by main: the player's bird
 
     this.selHelper = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color(0xf5a623));
@@ -231,9 +233,31 @@ export class BuildSystem {
     else { const hit = this.pick(centerNdc); if (hit) this._positionData(this.ghostData, this.ghost, hit); }
     this.emit('mode', 'place', LIB[type]);
   }
+  // offsets (in the object's own space) for every copy in the current pattern
+  _patternOffsets(w, d, h) {
+    const { shape, count: n, tall } = this.pattern;
+    const out = [];
+    const c = (i, m) => (i - (m - 1) / 2);
+    for (let k = 0; k < tall; k++) {
+      const y = k * h;
+      if (shape === 'grid') {
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out.push({ x: c(i, n) * w, y, z: c(j, n) * d, ry: 0 });
+      } else if (shape === 'room') {
+        const L = n * w;
+        for (let i = 0; i < n; i++) {
+          out.push({ x: c(i, n) * w, y, z: L / 2, ry: 0 }, { x: c(i, n) * w, y, z: -L / 2, ry: 0 });
+          out.push({ x: L / 2, y, z: c(i, n) * w, ry: Math.PI / 2 }, { x: -L / 2, y, z: c(i, n) * w, ry: Math.PI / 2 });
+        }
+      } else {
+        for (let i = 0; i < n; i++) out.push({ x: c(i, n) * w, y, z: 0, ry: 0 });
+      }
+    }
+    return out.slice(0, 400);
+  }
+
   _makeGhost() {
-    const g = this._build({ ...this.ghostData, id: -1 });
-    g.traverse((o) => {
+    const single = this._build({ ...this.ghostData, id: -1, x: 0, y: 0, z: 0, ry: 0, sx: 1, sy: 1, sz: 1 });
+    single.traverse((o) => {
       if (o.isMesh) {
         o.material = o.material.clone();
         o.material.transparent = true;
@@ -244,9 +268,30 @@ export class BuildSystem {
         o.userData.oid = undefined;
       }
     });
+    const size = new THREE.Box3().setFromObject(single).getSize(new THREE.Vector3());
+    const g = new THREE.Group();
+    this._patternOffsets(size.x, size.z, size.y).forEach((off, i) => {
+      const c = i === 0 ? single : single.clone();
+      c.position.set(off.x, off.y, off.z);
+      c.rotation.set(0, off.ry, 0);
+      g.add(c);
+    });
     this.ghost = g;
+    this._applyTransform(g, this.ghostData);
     this.scene.add(g);
   }
+
+  setPattern(p) {
+    Object.assign(this.pattern, p);
+    if (this.ghost) {
+      this._disposeGhost();
+      this._makeGhost();
+      if (this.bird && !this.aimMode) this.placeAhead(this.bird);
+    }
+    this.emit('pattern', this.pattern);
+  }
+  get patternSize() { return this.ghost ? this.ghost.children.length : 1; }
+
   _disposeGhost() {
     this.ghost.traverse((o) => { if (o.isMesh) o.material.dispose(); });
     this.scene.remove(this.ghost);
@@ -290,13 +335,19 @@ export class BuildSystem {
     this._positionData(this.ghostData, this.ghost, this.pickDown(x, z, bird.pos.y + 2.5));
   }
   placeGhost() {
-    if (!this.ghostData) return null;
+    if (!this.ghostData || !this.ghost) return null;
     this._snapshot();
-    const d = { ...this.ghostData };
-    delete d.id;
-    const id = this._add(d);
+    this.ghost.updateMatrixWorld(true);
+    const p = new THREE.Vector3();
+    let id = null;
+    for (const c of this.ghost.children) {
+      c.getWorldPosition(p);
+      const d = { ...this.ghostData, x: r2(p.x), y: r2(p.y), z: r2(p.z), ry: this._normAngle(this.ghostData.ry + c.rotation.y) };
+      delete d.id;
+      id = this._add(d);
+    }
     this.emit('change');
-    this.emit('placed', d);
+    this.emit('placed', this.ghostData, this.ghost.children.length);
     return id;
   }
 
@@ -373,7 +424,7 @@ export class BuildSystem {
     this.emit('transform', o.data);
     this.emit('change');
   }
-  _normAngle(a) { a %= Math.PI * 2; if (a < 0) a += Math.PI * 2; return r2(a); }
+  _normAngle(a) { a %= Math.PI * 2; if (a < 0) a += Math.PI * 2; return Math.round(a * 1e6) / 1e6; }
   _axisDir(name) {
     const f = new THREE.Vector3();
     this.camera.getWorldDirection(f); f.y = 0;
