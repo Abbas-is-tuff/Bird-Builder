@@ -138,6 +138,27 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight, false);
 });
 
+// ---------- shift lock ----------
+const CENTER = new THREE.Vector2(0, 0);
+let shiftLock = false;
+function setShiftLock(on) {
+  shiftLock = on;
+  input.shiftLock = on;
+  rig.shoulderGoal = on ? 1 : 0;
+  if (on) { rig.pitch = Math.min(rig.pitch, 0.45); rig.dist = Math.min(Math.max(rig.dist, 7), 16); }
+  const fine = matchMedia('(pointer:fine)').matches;
+  try {
+    if (on && fine) canvas.requestPointerLock?.()?.catch?.(() => {});
+    else if (!on && document.pointerLockElement) document.exitPointerLock();
+  } catch { /* pointer lock not allowed here: drag to look instead */ }
+  ui.onShiftLock(on);
+}
+app.setShiftLock = setShiftLock;
+app.isShiftLock = () => shiftLock;
+input.onShiftKey = () => { if (!ui.inMenu) setShiftLock(!shiftLock); };
+// leaving pointer lock with Esc on desktop turns shift lock off, like Roblox
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && shiftLock && matchMedia('(pointer:fine)').matches) setShiftLock(false); });
+
 // ---------- main loop ----------
 let last = performance.now(), fpsT = 0, fpsN = 0, viewShift = 0;
 renderer.setAnimationLoop((now) => {
@@ -149,10 +170,14 @@ renderer.setAnimationLoop((now) => {
   const f = rig.forward(), r = rig.right();
   const move = new THREE.Vector3().addScaledVector(r, intent.x).addScaledVector(f, intent.y);
   const before = player.pos.clone(), hBefore = player.heading;
+  player.lockHeading = shiftLock ? Math.atan2(-Math.sin(rig.yaw), -Math.cos(rig.yaw)) : null;
   player.step(dt, move, intent.vert);
   for (const n of npcs) n.think(dt, ui.inMenu ? new THREE.Vector3(0, 0, 6) : player.pos);
-  if (build.mode === 'place' && (before.distanceToSquared(player.pos) > 1e-6 || Math.abs(hBefore - player.heading) > 1e-4)) build.placeAhead(player);
   rig.update(dt);
+  if (build.mode === 'place') {
+    if (shiftLock) { camera.updateMatrixWorld(); build.aim(CENTER); }
+    else if (before.distanceToSquared(player.pos) > 1e-6 || Math.abs(hBefore - player.heading) > 1e-4) build.placeAhead(player);
+  }
   const want = ui.coveredBottom() / 2;
   viewShift += (want - viewShift) * Math.min(1, dt * 8);
   if (Math.abs(viewShift) > 0.5) camera.setViewOffset(innerWidth, innerHeight, 0, viewShift, innerWidth, innerHeight);

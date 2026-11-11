@@ -24,6 +24,7 @@ const P = {
   drop: '<path d="M12 3v12M6 11l6 6 6-6M4 21h16"/>',
   cube: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>',
   play: '<path d="M6 4l14 8-14 8z"/>', globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/>',
+  aim: '<circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15zM20 17v5H6.5A2.5 2.5 0 0 1 4 19.5"/>',
 };
 const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
@@ -68,7 +69,9 @@ export class UI {
       <div class="chip hidden" id="fps">-- FPS</div>
       <div class="hint hidden" id="hint"></div>
       <div class="joy" id="joy"><div class="knob"></div></div>
+      <div class="crosshair hidden" id="crosshair"></div>
       <div class="flypad" id="flypad">
+        <button class="btn fly lockbtn" data-a="shiftLock" id="lockBtn" aria-label="Shift lock">${icon('aim')}<span>LOCK</span></button>
         <button class="btn fly" id="flyUp" aria-label="Fly up">${icon('raise')}<span>FLY</span></button>
         <button class="btn fly" id="flyDown" aria-label="Fly down">${icon('lower')}<span>LAND</span></button>
       </div>
@@ -175,6 +178,21 @@ export class UI {
     setTimeout(() => { this.portraits ??= getBirdPortraits(); this.refreshBird(); }, 120);
   }
 
+  onShiftLock(on) {
+    $('#lockBtn').classList.toggle('on', on);
+    this.toast(on ? 'Shift Lock ON — aim with the +' : 'Shift Lock OFF');
+    this.layout();
+    if (this.build.mode === 'place') this.setPlaceLabel();
+  }
+
+  setPlaceLabel() {
+    const name = this._placeName || '';
+    const touch = matchMedia('(pointer:coarse)').matches;
+    $('#placeLabel').innerHTML = this.app.isShiftLock?.()
+      ? `<span><b>${esc(name)}</b> · aim with the <b>+</b> and ${touch ? 'tap anywhere' : 'click'} (or press <b>PLACE</b>)</span>`
+      : `<span><b>${esc(name)}</b> · tap the ground to place it there, or walk and press <b>PLACE</b></span>`;
+  }
+
   refreshBird() {
     const id = this.app.settings.bird || 'cookie';
     const def = BIRD[id];
@@ -210,6 +228,7 @@ export class UI {
         <div><i>2</i><span>Hold <b>FLY</b> to take off, <b>LAND</b> to come down${touch ? '' : ' (Space / X)'}.</span></div>
         <div><i>3</i><span>Tap <b>BUILD</b>, pick something, then <b>tap the ground</b> to place it — or press <b>PLACE</b> to drop it in front of you.</span></div>
         <div><i>4</i><span><b>Tap anything</b> you built to move, recolour or delete it. Made a mistake? Press <b>Undo</b>.</span></div>
+        <div><i>★</i><span>Tip: turn on <b>LOCK</b>${touch ? '' : ' (Shift)'} to aim with a <b>+</b> — whatever you're building goes exactly where you point.</span></div>
       </div>
       <div class="foot"><button class="btn primary" data-a="tutorialDone">Let's build!</button></div>`);
   }
@@ -223,7 +242,8 @@ export class UI {
     b.on('transform', () => this.updateInspectorValues());
     b.on('mode', (m, def) => {
       if (m === 'place') {
-        $('#placeLabel').innerHTML = `<span><b>${esc(def.name)}</b> · tap the ground to place it there, or walk and press <b>PLACE</b></span>`;
+        this._placeName = def.name;
+        this.setPlaceLabel();
       }
       this.layout();
     });
@@ -238,6 +258,7 @@ export class UI {
     menu() { this.app.save(); this.showMenu(true); },
     play() { if (!this.app.settings.bird) this.openBirdPicker(true); else this.showMenu(false); },
     pickBird() { this.openBirdPicker(false); },
+    shiftLock() { this.app.setShiftLock(!this.app.isShiftLock()); },
     newWorld() {
       const fresh = () => { this.app.newWorld(); this.toast('New world created'); this.actions.play.call(this); };
       if (this.app.hasSave()) this.confirm('Create a new world?', 'Your current world on this device will be replaced with a fresh map.', 'Create World', fresh);
@@ -306,6 +327,7 @@ export class UI {
     const joyOff = !wide && (libOpen || sel);
     $('#joy').classList.toggle('hidden', joyOff);
     $('#flypad').classList.toggle('hidden', joyOff);
+    $('#crosshair').classList.toggle('hidden', !this.app.isShiftLock?.() || libOpen || this.inMenu);
     $('#modeChip').textContent = placing ? 'PLACING' : sel ? 'EDITING' : 'BUILD MODE';
     this.app.input.enabled = !this.inMenu;
     this.updateHint();
@@ -314,7 +336,7 @@ export class UI {
 
   showMenu(on) {
     this.inMenu = on;
-    if (on) { this.build.stopPlacing(); this.build.deselect(); this.closeLibrary(false); this.app.input.cancelAll(); }
+    if (on) { if (this.app.isShiftLock?.()) this.app.setShiftLock(false); this.build.stopPlacing(); this.build.deselect(); this.closeLibrary(false); this.app.input.cancelAll(); }
     this.refreshMenu();
     this.layout();
   }

@@ -11,6 +11,8 @@ export class CameraRig {
     this.pitch = 0.5;
     this.dist = 42;
     this.move = new THREE.Vector2(); // joystick/keyboard (-1..1)
+    this.shoulder = 0; // 0..1, over-the-shoulder offset used by shift lock
+    this.shoulderGoal = 0;
     this.turn = 0;
   }
   forward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
@@ -34,10 +36,12 @@ export class CameraRig {
   }
   update(dt) {
     if (this.follow) {
+      this.shoulder += (this.shoulderGoal - this.shoulder) * Math.min(1, dt * 8);
+      const r = this.right().multiplyScalar(this.shoulder * 1.4);
       const f = this.follow;
-      const k = Math.min(1, dt * 9);
-      this.target.x += (f.x - this.target.x) * k;
-      this.target.z += (f.z - this.target.z) * k;
+      const k = Math.min(1, dt * (this.shoulderGoal ? 20 : 9));
+      this.target.x += (f.x + r.x - this.target.x) * k;
+      this.target.z += (f.z + r.z - this.target.z) * k;
       this.target.y += (f.y + 0.9 - this.target.y) * k;
       this.yaw -= this.turn * dt * 1.6;
       return this._place();
@@ -77,6 +81,9 @@ export class Input {
     this.pointers = new Map();
     this.state = 'none';
     this.keys = new Set();
+    this.shiftLock = false;
+    this.onShiftKey = null; // set by main
+    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
     this.enabled = true;
     const on = (t, f, o) => canvas.addEventListener(t, f, o);
     on('pointerdown', (e) => this.down(e));
@@ -91,6 +98,7 @@ export class Input {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? build.redo() : build.undo(); }
       else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); build.redo(); }
       else if (e.code === 'Delete' || e.code === 'Backspace') build.deleteSelected();
+      else if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) this.onShiftKey?.();
       else if (e.code === 'KeyR') build.rotateSelected(e.shiftKey ? -1 : 1);
       else if (e.code === 'Escape') { build.mode === 'place' ? build.stopPlacing() : build.deselect(); }
     });
@@ -112,7 +120,7 @@ export class Input {
       this.state = 'pending';
       this.pType = e.pointerType;
       this.button = e.button;
-      this.shift = e.shiftKey;
+      this.shift = e.shiftKey && !this.shiftLock;
     } else if (this.pointers.size === 2) {
       if (this.state === 'buildDrag') this.build.endDrag();
       this.state = 'gesture';
@@ -127,9 +135,10 @@ export class Input {
 
   moveEv(e) {
     if (!this.enabled) return;
+    if (this.locked) { this.rig.orbit(e.movementX * 0.7, e.movementY * 0.7); return; } // mouse look
     const p = this.pointers.get(e.pointerId);
     if (!p) {
-      if (e.pointerType === 'mouse' && e.buttons === 0) this.build.hover(this.ndc(e.clientX, e.clientY));
+      if (e.pointerType === 'mouse' && e.buttons === 0 && !this.shiftLock) this.build.hover(this.ndc(e.clientX, e.clientY));
       return;
     }
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -164,7 +173,11 @@ export class Input {
   up(e, cancelled) {
     const p = this.pointers.get(e.pointerId);
     if (!p) return;
-    if (!cancelled && this.state === 'pending') this.build.tap(this.ndc(p.x, p.y), e.pointerType);
+    if (!cancelled && this.state === 'pending') {
+      // shift lock: aim with the centre "+" (always with a locked mouse, and when placing on touch)
+      const aim = this.locked || (this.shiftLock && this.build.mode === 'place');
+      this.build.tap(aim ? new THREE.Vector2(0, 0) : this.ndc(p.x, p.y), e.pointerType);
+    }
     if (this.state === 'buildDrag') this.build.endDrag();
     this.pointers.delete(e.pointerId);
     if (this.pointers.size === 1) {

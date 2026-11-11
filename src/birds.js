@@ -182,7 +182,8 @@ export class Bird {
     }
 
     this.moving = hl > 0.4;
-    if (move.lengthSq() > 0.01) {
+    if (this.lockHeading != null) this.heading = this.lockHeading;
+    else if (move.lengthSq() > 0.01) {
       const target = Math.atan2(move.x, move.z);
       let d = target - this.heading;
       d = Math.atan2(Math.sin(d), Math.cos(d));

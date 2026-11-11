@@ -351,6 +351,12 @@ export class BuildSystem {
     const oid = this._hitOid(ndc);
     if (oid != null) this.select(oid); else this.deselect();
   }
+  // shift lock: preview follows the centre crosshair (ignores far-away hits)
+  aim(ndc, maxDist = 70) {
+    if (this.mode !== 'place' || this.dragging || !this.ghost) return;
+    const hit = this.pick(ndc);
+    if (hit && hit.point.distanceTo(this.camera.position) < maxDist) this._positionData(this.ghostData, this.ghost, hit);
+  }
   hover(ndc) {
     if (this.mode !== 'place' || this.dragging) return;
     const hit = this.pick(ndc);
