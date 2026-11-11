@@ -17,11 +17,11 @@ Built with Three.js + Vite (WebGL2). Works in phone browsers (iOS Safari, Androi
 
 ## Development
     npm install
-    npm run dev           # local dev server
-    npm run build         # production build -> dist/
-    npm run build:single  # one self-contained index.html -> dist-single/
+    npm run dev           # local dev server (opens dev.html)
+    npm run build         # builds the game into ./index.html (what GitHub Pages serves)
+    npm run build:multi   # multi-file build -> dist/ (for app packaging)
 
-Every push to `main` is built and published to GitHub Pages automatically (.github/workflows/deploy.yml).
+GitHub Pages serves `index.html` from the main branch. Every push to `main` rebuilds it automatically (.github/workflows/deploy.yml).
 
 ## Code (src/)
 - main.js      renderer, graphics presets, save/load, main loop

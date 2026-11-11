@@ -2,9 +2,9 @@
   "name": "bird-builder",
   "version": "0.1.0",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:single": "vite build --mode single",
+    "dev": "vite --open /dev.html",
+    "build": "vite build --mode single && cp dist-single/dev.html index.html",
+    "build:multi": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {

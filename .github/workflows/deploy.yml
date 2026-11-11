@@ -1,17 +1,19 @@
-name: Deploy to GitHub Pages
+name: Build game (index.html)
 
+# GitHub Pages serves this repo straight from the main branch.
+# On every push this rebuilds the playable index.html from the source in src/
+# and commits it, so the live game is always up to date.
 on:
   push:
     branches: [main]
+    paths-ignore: [index.html]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: build-index
   cancel-in-progress: true
 
 jobs:
@@ -25,18 +27,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Commit rebuilt game
+        run: |
+          if git diff --quiet -- index.html; then echo "index.html already up to date"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Rebuild index.html"
+          git push
