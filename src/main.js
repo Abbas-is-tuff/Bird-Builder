@@ -167,5 +167,10 @@ renderer.setAnimationLoop((now) => {
 const boot = document.getElementById('boot');
 requestAnimationFrame(() => { boot.classList.add('fade'); setTimeout(() => boot.remove(), 600); });
 
+// offline play: cache the game on the device (works on the GitHub Pages site)
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+}
+
 // handy for debugging / automated tests
 window.FORGE = app;

@@ -32,3 +32,5 @@ GitHub Pages serves `index.html` from the main branch. Every push to `main` rebu
 - build.js     placement, selection, snapping/stacking, transforms, undo/redo
 - controls.js  camera + touch/mouse/keyboard input
 - ui.js        menus, HUD, joystick, library, inspector, settings
+
+At the repo root: `manifest.webmanifest` + `icons/` (Home Screen logo) and `sw.js` (offline play).

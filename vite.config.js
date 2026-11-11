@@ -6,6 +6,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 // `npm run build:multi` -> normal multi-file build (dist/), for app packaging later.
 export default defineConfig(({ mode }) => ({
   base: './',
+  publicDir: false, // icons, manifest and sw.js live at the repo root and are served as-is
   plugins: mode === 'single' ? [viteSingleFile()] : [],
   build: {
     rollupOptions: { input: 'dev.html' },
