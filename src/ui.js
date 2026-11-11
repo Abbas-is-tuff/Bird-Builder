@@ -86,6 +86,7 @@ export class UI {
           <button class="btn" data-a="patCount" id="patCount" aria-label="How many"></button>
           <button class="btn" data-a="patTall" id="patTall" aria-label="How tall"></button>
         </div>
+        <button class="btn mirrorbtn" data-a="mirror" id="mirrorBtn" aria-label="Mirror mode"></button>
         <div class="row">
           <button class="btn" data-a="ghostRotL" aria-label="Rotate left">${icon('rotL')}</button>
           <button class="btn" data-a="ghostRotR" aria-label="Rotate right">${icon('rotR')}</button>
@@ -195,8 +196,12 @@ export class UI {
     $('#patShape').innerHTML = `<small>REPEAT</small>${{ row: 'ROW', room: 'ROOM', grid: 'GRID' }[p.shape]}`;
     $('#patCount').innerHTML = `<small>${p.shape === 'row' ? 'PIECES' : 'PER SIDE'}</small>×${p.count}`;
     $('#patTall').innerHTML = `<small>LEVELS</small>↑${p.tall}`;
-    const n = this.build.patternSize;
+    const mm = this.build.mirror.mode;
+    const n = this.build.patternSize * (mm === 'off' ? 1 : mm === 'xz' ? 4 : 2);
     $('#placeCount').textContent = n > 1 ? ` ×${n}` : '';
+    const mb = $('#mirrorBtn');
+    mb.innerHTML = `<small>MIRROR</small>${{ off: 'OFF', x: '⇆ LEFT · RIGHT', z: '⇅ FRONT · BACK', xz: '✛ 4-WAY' }[mm]}`;
+    mb.classList.toggle('on', mm !== 'off');
   }
 
   setPlaceLabel() {
@@ -268,6 +273,7 @@ export class UI {
     });
     b.on('placed', () => this.flashPlace());
     b.on('pattern', () => this.updatePattern());
+    b.on('mirror', () => this.updatePattern());
   }
 
   actions = {
@@ -287,6 +293,13 @@ export class UI {
       const p = this.build.pattern;
       this.build.setPattern({ count: steps[(steps.indexOf(p.count) + 1) % steps.length] });
     },
+    mirror() {
+      const order = ['off', 'x', 'z', 'xz'];
+      const next = order[(order.indexOf(this.build.mirror.mode) + 1) % order.length];
+      this.build.setMirror(next, this.build.bird?.pos);
+      this.toast(next === 'off' ? 'Mirror OFF' : 'Mirror line set where your bird stands');
+    },
+    flip() { this.build.flipSelected(); },
     patTall() {
       const p = this.build.pattern;
       this.build.setPattern({ tall: p.tall % 4 + 1 });
@@ -433,7 +446,7 @@ export class UI {
         <div class="exact">
           ${['x', 'y', 'z', 'ry'].map((f) => `<label>${f === 'ry' ? 'ROT °' : f.toUpperCase()}<input inputmode="decimal" data-f="${f}" /></label>`).join('')}
         </div>
-        <div class="row-btns"><button class="btn" data-a="drop">${icon('drop')} Drop to surface</button></div>`;
+        <div class="row-btns"><button class="btn" data-a="drop">${icon('drop')} Drop</button><button class="btn" data-a="flip">⇆ Flip</button></div>`;
       body.querySelectorAll('input[data-f]').forEach((inp) => {
         const commit = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) this.build.setExact(inp.dataset.f, v); else this.updateInspectorValues(true); };
         inp.addEventListener('change', commit);
@@ -478,7 +491,7 @@ export class UI {
     const dims = $('#dims');
     if (dims) {
       const e = this.build._extents(o.root);
-      dims.innerHTML = `${fmt(e.max.x - e.min.x, 1)} × ${fmt(e.max.y - e.min.y, 1)} × ${fmt(e.max.z - e.min.z, 1)} m<br>scale ${fmt(d.sx)} / ${fmt(d.sy)} / ${fmt(d.sz)}`;
+      dims.innerHTML = `${fmt(e.max.x - e.min.x, 1)} × ${fmt(e.max.y - e.min.y, 1)} × ${fmt(e.max.z - e.min.z, 1)} m<br>scale ${fmt(Math.abs(d.sx))} / ${fmt(Math.abs(d.sy))} / ${fmt(Math.abs(d.sz))}`;
     }
   }
 

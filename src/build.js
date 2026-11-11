@@ -26,6 +26,22 @@ export class BuildSystem {
     this.rotOffset = 0;
     // repeat pattern for fast building: row / grid / room, count per side, levels tall
     this.pattern = { shape: 'row', count: 1, tall: 1 };
+    // mirror mode: everything placed is copied across a mirror line through (cx, cz)
+    this.mirror = { mode: 'off', cx: 0, cz: 0 };
+    this.mirrorGhosts = [];
+    const planeMat = new THREE.MeshBasicMaterial({ color: 0xf5a623, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false });
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xf5a623, transparent: true, opacity: 0.8, depthWrite: false });
+    this.mirrorPlanes = ['x', 'z'].map((ax) => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.PlaneGeometry(80, 30), planeMat));
+      const line = new THREE.Mesh(new THREE.BoxGeometry(80, 0.12, 0.12), edgeMat);
+      line.position.y = -14.9;
+      g.add(line);
+      g.userData.axis = ax;
+      g.visible = false;
+      scene.add(g);
+      return g;
+    });
     this.bird = null; // set by main: the player's bird
 
     this.selHelper = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color(0xf5a623));
@@ -279,6 +295,46 @@ export class BuildSystem {
     this.ghost = g;
     this._applyTransform(g, this.ghostData);
     this.scene.add(g);
+    this._rebuildMirrorGhosts();
+  }
+
+  // ---------- mirror mode ----------
+  _mirrorList() { return { off: [], x: ['x'], z: ['z'], xz: ['x', 'z', 'xz'] }[this.mirror.mode]; }
+  _mirrorMatrix(m) {
+    const { cx, cz } = this.mirror;
+    const sx = m === 'x' || m === 'xz' ? -1 : 1, sz = m === 'z' || m === 'xz' ? -1 : 1;
+    return new THREE.Matrix4().makeTranslation(cx, 0, cz)
+      .multiply(new THREE.Matrix4().makeScale(sx, 1, sz))
+      .multiply(new THREE.Matrix4().makeTranslation(-cx, 0, -cz));
+  }
+  _mirrorData(d, m) {
+    const o = { ...d };
+    const { cx, cz } = this.mirror;
+    if (m === 'x' || m === 'xz') o.x = r2(2 * cx - d.x);
+    if (m === 'z' || m === 'xz') o.z = r2(2 * cz - d.z);
+    // a reflection = rotation by -ry plus a flip of one local axis (both flips = half turn)
+    if (m === 'x') { o.ry = this._normAngle(-d.ry); o.sx = -d.sx; }
+    else if (m === 'z') { o.ry = this._normAngle(-d.ry); o.sz = -d.sz; }
+    else o.ry = this._normAngle(d.ry + Math.PI);
+    return o;
+  }
+  _rebuildMirrorGhosts() {
+    this.mirrorGhosts.forEach((g) => this.scene.remove(g));
+    this.mirrorGhosts = [];
+    if (!this.ghost) return;
+    for (const m of this._mirrorList()) {
+      const c = this.ghost.clone();
+      c.matrixAutoUpdate = false;
+      c.userData.mirror = m;
+      this.scene.add(c);
+      this.mirrorGhosts.push(c);
+    }
+  }
+  setMirror(mode, center) {
+    this.mirror.mode = mode;
+    if (center) { this.mirror.cx = Math.round(center.x); this.mirror.cz = Math.round(center.z); }
+    this._rebuildMirrorGhosts();
+    this.emit('mirror', this.mirror);
   }
 
   setPattern(p) {
@@ -293,6 +349,8 @@ export class BuildSystem {
   get patternSize() { return this.ghost ? this.ghost.children.length : 1; }
 
   _disposeGhost() {
+    this.mirrorGhosts.forEach((g) => this.scene.remove(g));
+    this.mirrorGhosts = [];
     this.ghost.traverse((o) => { if (o.isMesh) o.material.dispose(); });
     this.scene.remove(this.ghost);
     this.ghost = null;
@@ -339,15 +397,25 @@ export class BuildSystem {
     this._snapshot();
     this.ghost.updateMatrixWorld(true);
     const p = new THREE.Vector3();
-    let id = null;
+    const pieces = [];
     for (const c of this.ghost.children) {
       c.getWorldPosition(p);
       const d = { ...this.ghostData, x: r2(p.x), y: r2(p.y), z: r2(p.z), ry: this._normAngle(this.ghostData.ry + c.rotation.y) };
       delete d.id;
+      pieces.push(d);
+    }
+    const base = pieces.slice();
+    for (const m of this._mirrorList()) for (const d of base) pieces.push(this._mirrorData(d, m));
+    const seen = new Set();
+    let id = null;
+    for (const d of pieces) {
+      const key = `${d.x.toFixed(2)}|${d.y.toFixed(2)}|${d.z.toFixed(2)}`;
+      if (seen.has(key)) continue; // a piece sitting on the mirror line isn't doubled
+      seen.add(key);
       id = this._add(d);
     }
     this.emit('change');
-    this.emit('placed', this.ghostData, this.ghost.children.length);
+    this.emit('placed', this.ghostData, seen.size);
     return id;
   }
 
@@ -460,12 +528,13 @@ export class BuildSystem {
     const f = dir > 0 ? 1.25 : 0.8;
     const ax = this.scaleAxis;
     this._edit((d) => {
-      const c = (v) => r2(THREE.MathUtils.clamp(v * f, 0.1, 30));
+      const c = (v) => Math.sign(v || 1) * r2(THREE.MathUtils.clamp(Math.abs(v) * f, 0.1, 30));
       if (ax === 'all' || ax === 'x') d.sx = c(d.sx);
       if (ax === 'all' || ax === 'y') d.sy = c(d.sy);
       if (ax === 'all' || ax === 'z') d.sz = c(d.sz);
     });
   }
+  flipSelected() { this._edit((d) => { d.sx = -d.sx; }); }
   resetScale() { this._edit((d) => { d.sx = d.sy = d.sz = 1; }); }
   setExact(field, value) {
     if (!Number.isFinite(value)) return;
@@ -501,6 +570,21 @@ export class BuildSystem {
     const o = this.selected;
     this.selHelper.visible = !!o;
     if (o) this.selHelper.box.setFromObject(o.root).expandByScalar(0.03);
+    // mirror previews + mirror line
+    for (const c of this.mirrorGhosts) {
+      c.matrix.multiplyMatrices(this._mirrorMatrix(c.userData.mirror), this.ghost.matrix);
+      c.matrixWorldNeedsUpdate = true;
+    }
+    const mm = this.mirror.mode, showM = this.mode === 'place' && mm !== 'off';
+    const gy = this.world.getHeight(this.mirror.cx, this.mirror.cz);
+    for (const pl of this.mirrorPlanes) {
+      const ax = pl.userData.axis;
+      pl.visible = showM && (mm === 'xz' || mm === ax);
+      if (!pl.visible) continue;
+      const y = Math.max(gy, this.ghostData?.y ?? gy) + 15;
+      if (ax === 'x') { pl.position.set(this.mirror.cx, y, this.ghostData?.z ?? this.mirror.cz); pl.rotation.set(0, Math.PI / 2, 0); }
+      else { pl.position.set(this.ghostData?.x ?? this.mirror.cx, y, this.mirror.cz); pl.rotation.set(0, 0, 0); }
+    }
     const focus = this.mode === 'place' ? this.ghostData : o?.data;
     this.grid.visible = this.snap && !!focus;
     if (focus) this.grid.position.set(Math.round(focus.x), focus.y + 0.03, Math.round(focus.z));

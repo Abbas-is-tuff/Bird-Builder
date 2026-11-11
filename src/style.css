@@ -252,3 +252,8 @@ html, body {
 .placebar .row.pat .btn small { font: 700 9px Inter, sans-serif; letter-spacing: .12em; color: var(--muted); }
 #placeCount { font-weight: 800; }
 @media (max-width: 600px) { #game.placing .flypad { bottom: calc(218px + var(--sab)); } }
+
+.btn.mirrorbtn { width: 100%; height: 46px; flex-direction: column; gap: 0; font: 800 13px Inter, sans-serif; line-height: 1.15; }
+.btn.mirrorbtn small { font: 700 9px Inter, sans-serif; letter-spacing: .12em; color: var(--muted); }
+.btn.mirrorbtn.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 600px) { #game.placing .flypad { bottom: calc(272px + var(--sab)); } }

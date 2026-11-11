@@ -6,8 +6,10 @@ import { CameraRig, Input } from './controls.js';
 import { BuildSystem } from './build.js';
 import { UI } from './ui.js';
 import { setAnisotropy } from './textures.js';
-import { starterWorld } from './library.js';
-import { Bird, BIRD, BIRDS } from './birds.js';
+import { starterWorld, setStatueFactory } from './library.js';
+import { Bird, BIRD, BIRDS, makeBirdModel } from './birds.js';
+
+setStatueFactory(() => makeBirdModel(BIRD.abbas));
 
 const SAVE_KEY = 'forge.world.v1';
 const SET_KEY = 'forge.settings.v1';
