@@ -158,6 +158,7 @@ function setShiftLock(on) {
 }
 app.setShiftLock = setShiftLock;
 app.isShiftLock = () => shiftLock;
+input.onUseKey = () => { if (!ui.inMenu) ui.usePrompt(); };
 input.onShiftKey = () => { if (!ui.inMenu) setShiftLock(!shiftLock); };
 // leaving pointer lock with Esc on desktop turns shift lock off, like Roblox
 document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && shiftLock && matchMedia('(pointer:fine)').matches) setShiftLock(false); });
@@ -188,6 +189,7 @@ renderer.setAnimationLoop((now) => {
   world.update(dt, rig.target);
   build.update();
   renderer.render(scene, camera);
+  ui.updatePrompt(now);
   fpsT += dt; fpsN++;
   if (fpsT > 0.5) { if (settings.showFps) ui.setFps(Math.round(fpsN / fpsT)); fpsT = 0; fpsN = 0; }
 });

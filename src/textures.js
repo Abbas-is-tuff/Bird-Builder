@@ -218,6 +218,11 @@ const INTERNAL = {
   darkmetal: { tex: 'metal', rough: 0.45, metal: 0.9, color: '#5a5f66' },
   rubber: { rough: 0.9, metal: 0, color: '#222222' },
   light: { rough: 0.3, metal: 0, color: '#fff6dd', emissive: '#ffe2a0' },
+  lightoff: { rough: 0.3, metal: 0, color: '#5a5a55' },
+  tvscreen: { rough: 0.2, metal: 0, color: '#1a2a40', emissive: '#6fb4ff', fixedGlow: 1.6 },
+  glowred: { rough: 0.3, metal: 0, color: '#ff4a3a', emissive: '#ff2a1a', fixedGlow: 2.2 },
+  glowyellow: { rough: 0.3, metal: 0, color: '#ffd23f', emissive: '#ffbe1a', fixedGlow: 2.2 },
+  glowgreen: { rough: 0.3, metal: 0, color: '#3aff7a', emissive: '#1aff5a', fixedGlow: 2.2 },
   paint: { tex: 'roadMarkings', rough: 0.6, metal: 0, color: '#ffffff', alphaTest: 0.5 },
 };
 
@@ -252,8 +257,8 @@ export function getMaterial(name, color = null) {
     if (def.alphaTest) { m.alphaTest = def.alphaTest; m.transparent = false; }
     if (def.emissive) {
       m.emissive = new THREE.Color(def.emissive);
-      m.emissiveIntensity = 1;
-      lightMaterials.push(m);
+      m.emissiveIntensity = def.fixedGlow || 1;
+      if (!def.fixedGlow) lightMaterials.push(m);
     }
   }
   m.userData.matName = name;

@@ -2,6 +2,7 @@
 // materials/colours, duplicate/delete and undo/redo history.
 import * as THREE from 'three';
 import { LIB, buildItem } from './library.js';
+import { getMaterial } from './textures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const r2 = (v) => Math.round(v * 1000) / 1000;
@@ -28,6 +29,8 @@ export class BuildSystem {
     this.pattern = { shape: 'row', count: 1, tall: 1 };
     // mirror mode: everything placed is copied across a mirror line through (cx, cz)
     this.mirror = { mode: 'off', cx: 0, cz: 0 };
+    this.animating = new Set();
+    this._clock = performance.now();
     this.mirrorGhosts = [];
     const planeMat = new THREE.MeshBasicMaterial({ color: 0xf5a623, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false });
     const edgeMat = new THREE.MeshBasicMaterial({ color: 0xf5a623, transparent: true, opacity: 0.8, depthWrite: false });
@@ -89,8 +92,102 @@ export class BuildSystem {
         o.receiveShadow = true;
       }
     });
+    // interactive parts: hinges/sliders and glowing bits
+    root.userData.anims = [];
+    root.userData.glows = [];
+    root.traverse((o) => {
+      if (o.userData.anim) root.userData.anims.push(o);
+      if (o.userData.glow) root.userData.glows.push(o);
+    });
+    this._applyState(root, data, true);
     this._applyTransform(root, data);
     return root;
+  }
+
+  // ---------- interactables (doors, windows, lamps, ...) ----------
+  isOn(d) { const it = LIB[d.type]?.interact; return d.open ?? (it?.initial || false); }
+  _applyState(root, d, instant) {
+    const on = this.isOn(d);
+    root.userData.tTarget = on ? 1 : 0;
+    if (instant) { root.userData.t = root.userData.tTarget; this._pose(root); }
+    else if (root.userData.anims.length) this.animating.add(root);
+    for (const g of root.userData.glows) {
+      if (g.userData.glow === 'light') g.material = getMaterial(on ? 'light' : 'lightoff');
+      else if (g.userData.glow === 'screen') g.material = on ? getMaterial('tvscreen') : getMaterial('plastic', '#0d1117');
+    }
+  }
+  _pose(root) {
+    const t = root.userData.t ?? 0;
+    const e = t * t * (3 - 2 * t);
+    for (const o of root.userData.anims) {
+      const a = o.userData.anim;
+      if (a.swing) continue;
+      o[a.prop][a.axis] = a.closed + (a.open - a.closed) * e;
+    }
+  }
+  canInteract(id) { const o = this.objects.get(id); return !!(o && LIB[o.data.type]?.interact); }
+  interactLabel(id) {
+    const o = this.objects.get(id); const it = o && LIB[o.data.type]?.interact;
+    if (!it) return '';
+    return this.isOn(o.data) ? it.verbs[1] : it.verbs[0];
+  }
+  interact(id) {
+    const o = this.objects.get(id);
+    const it = o && LIB[o.data.type]?.interact;
+    if (!it) return;
+    if (it.swing) { o.root.userData.swingT0 = performance.now() / 1000; this.animating.add(o.root); return; }
+    o.data.open = !this.isOn(o.data);
+    this._applyState(o.root, o.data, false);
+    this.emit('change');
+    this.emit('interact', o.data);
+  }
+  // closest usable thing near a point (the bird)
+  nearestInteractable(pos, maxDist = 2.6) {
+    let best = null, bestD = maxDist;
+    const box = new THREE.Box3();
+    for (const { data, root } of this.objects.values()) {
+      if (!LIB[data.type]?.interact) continue;
+      if (Math.abs(data.x - pos.x) > 12 || Math.abs(data.z - pos.z) > 12) continue;
+      const dist = box.setFromObject(root).distanceToPoint(pos);
+      if (dist < bestD) { bestD = dist; best = data.id; }
+    }
+    return best;
+  }
+  _animate(dt) {
+    const now = performance.now() / 1000;
+    for (const root of this.animating) {
+      if (!root.parent) { this.animating.delete(root); continue; }
+      let busy = false;
+      const u = root.userData;
+      if (u.t !== u.tTarget) {
+        u.t += Math.sign(u.tTarget - u.t) * Math.min(Math.abs(u.tTarget - u.t), dt * 2.2);
+        this._pose(root);
+        busy = u.t !== u.tTarget;
+      }
+      if (u.swingT0 != null) {
+        const s = now - u.swingT0;
+        const ang = 0.75 * Math.sin(s * 3.2) * Math.exp(-s * 0.35);
+        for (const o of u.anims) if (o.userData.anim.swing) o.rotation.x = ang;
+        if (s < 14) busy = true; else u.swingT0 = null;
+      }
+      if (!busy) this.animating.delete(root);
+    }
+    // traffic lights run on their own: green 5 s, yellow 1.5 s, red 5 s
+    if (now - (this._tlCheck || 0) > 0.25) {
+      this._tlCheck = now;
+      for (const { data, root } of this.objects.values()) {
+        if (!LIB[data.type]?.cycle) continue;
+        const t = (now + data.id * 1.7) % 11.5;
+        const phase = t < 5 ? 2 : t < 6.5 ? 1 : 0; // 0 red (top), 1 yellow, 2 green
+        if (root.userData.phase === phase) continue;
+        root.userData.phase = phase;
+        const on = ['glowred', 'glowyellow', 'glowgreen'], off = ['#4a1512', '#4a3d10', '#103a1c'];
+        for (const g of root.userData.glows) {
+          const k = +g.userData.glow.slice(2);
+          g.material = k === phase ? getMaterial(on[k]) : getMaterial('plastic', off[k]);
+        }
+      }
+    }
   }
   _applyTransform(root, d) {
     root.position.set(d.x, d.y, d.z);
@@ -567,6 +664,9 @@ export class BuildSystem {
   setSnap(on) { this.snap = on; }
 
   update() {
+    const now = performance.now();
+    this._animate(Math.min(0.05, (now - this._clock) / 1000));
+    this._clock = now;
     const o = this.selected;
     this.selHelper.visible = !!o;
     if (o) this.selHelper.box.setFromObject(o.root).expandByScalar(0.03);

@@ -98,6 +98,7 @@ export class Input {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? build.redo() : build.undo(); }
       else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); build.redo(); }
       else if (e.code === 'Delete' || e.code === 'Backspace') build.deleteSelected();
+      else if (e.code === 'KeyE') this.onUseKey?.();
       else if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) this.onShiftKey?.();
       else if (e.code === 'KeyR') build.rotateSelected(e.shiftKey ? -1 : 1);
       else if (e.code === 'Escape') { build.mode === 'place' ? build.stopPlacing() : build.deselect(); }
@@ -205,7 +206,7 @@ export class Input {
     if (k.has('KeyS') || k.has('ArrowDown')) y -= 1;
     if (k.has('KeyD') || k.has('ArrowRight')) x += 1;
     if (k.has('KeyA') || k.has('ArrowLeft')) x -= 1;
-    this.rig.turn = (k.has('KeyE') ? 1 : 0) - (k.has('KeyQ') ? 1 : 0);
+    this.rig.turn = 0;
     if (!this.enabled) { x = y = vert = 0; }
     const v = new THREE.Vector2(THREE.MathUtils.clamp(x, -1, 1), THREE.MathUtils.clamp(y, -1, 1));
     if (v.length() > 1) v.normalize();

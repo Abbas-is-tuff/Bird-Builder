@@ -37,6 +37,15 @@ function Mx(key, geoFn, mat, x = 0, y = 0, z = 0) {
   m.position.set(x, y, z);
   return m;
 }
+// a hinge/slider: children move with it; anim says how it opens
+function P(x, y, z, anim, ...children) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.userData.anim = anim; // { prop: 'rotation'|'position'|'scale', axis, closed, open }
+  children.flat().forEach((c) => g.add(c));
+  return g;
+}
+const glow = (m, kind) => { m.userData.glow = kind; return m; };
 function G(...children) { const g = new THREE.Group(); children.flat().forEach((c) => g.add(c)); return g; }
 
 function extrudeShape(key, pts, depth, uvScale = 0.5) {
@@ -114,21 +123,21 @@ export const LIBRARY = [
     build: (M) => G(new THREE.Mesh(extrudeShape('roof', [[-2.2, 0], [2.2, 0], [0, 1.6]], 4.2), M.main)),
   },
   {
-    id: 'door', name: 'Door Wall', cat: 'structures', mat: 'concrete',
+    id: 'door', name: 'Door Wall', cat: 'structures', mat: 'concrete', interact: { verbs: ['Open Door', 'Close Door'] },
     build: (M) => {
       const wood = M.get('wood', '#9b6a45'), metal = M.get('darkmetal');
-      const knob = new THREE.Mesh(cg('knob', () => new THREE.SphereGeometry(0.05, 12, 8)), metal);
-      knob.position.set(0.38, 1.05, 0.08);
+      const knob = (z) => Mx('knob', () => new THREE.SphereGeometry(0.05, 12, 8), metal, 0.9, 1.05, z);
       return G(B(1.45, 3, 0.25, M.main, -1.275), B(1.45, 3, 0.25, M.main, 1.275), B(1.1, 0.8, 0.25, M.main, 0, 2.2),
-        B(1.04, 2.18, 0.07, wood, 0, 0.01), knob);
+        P(-0.52, 0, 0, { prop: 'rotation', axis: 'y', closed: 0, open: -1.75 }, B(1.04, 2.18, 0.07, wood, 0.52, 0.01), knob(0.08), knob(-0.08)));
     },
   },
   {
-    id: 'window', name: 'Window Wall', cat: 'structures', mat: 'concrete',
+    id: 'window', name: 'Window Wall', cat: 'structures', mat: 'concrete', interact: { verbs: ['Open Window', 'Close Window'] },
     build: (M) => {
       const glass = M.get('glass'), frame = M.get('darkmetal');
       return G(B(4, 1, 0.25, M.main), B(4, 0.8, 0.25, M.main, 0, 2.2), B(1.2, 1.2, 0.25, M.main, -1.4, 1), B(1.2, 1.2, 0.25, M.main, 1.4, 1),
-        B(1.6, 1.2, 0.03, glass, 0, 1), B(0.05, 1.2, 0.08, frame, 0, 1), B(1.6, 0.05, 0.08, frame, 0, 1.575));
+        P(0, 2.2, 0, { prop: 'rotation', axis: 'x', closed: 0, open: -0.95 },
+          B(1.6, 1.2, 0.03, glass, 0, -1.2), B(0.05, 1.2, 0.08, frame, 0, -1.2), B(1.6, 0.05, 0.08, frame, 0, -0.625), B(1.6, 0.06, 0.08, frame, 0, -1.2), B(1.6, 0.06, 0.08, frame, 0, -0.06)));
     },
   },
   { id: 'glasspanel', name: 'Glass Panel', cat: 'structures', mat: 'glass', build: (M) => G(B(2, 3, 0.05, M.main), B(2, 0.06, 0.1, M.get('darkmetal'), 0, 0), B(2, 0.06, 0.1, M.get('darkmetal'), 0, 2.94)) },
@@ -158,9 +167,9 @@ export const LIBRARY = [
   },
   { id: 'sidewalk', name: 'Sidewalk', cat: 'infrastructure', mat: 'concrete', build: (M) => G(B(2, 0.25, 4, M.main)) },
   {
-    id: 'streetlight', name: 'Streetlight', cat: 'infrastructure', mat: 'darkmetal',
+    id: 'streetlight', name: 'Streetlight', cat: 'infrastructure', mat: 'darkmetal', interact: { verbs: ['Turn On', 'Turn Off'], initial: true, toggle: true },
     build: (M) => G(Cyl(0.08, 0.13, 6, M.main), B(1.5, 0.08, 0.08, M.main, 0.7, 5.88), B(0.7, 0.14, 0.32, M.main, 1.35, 5.76),
-      B(0.56, 0.03, 0.24, M.get('light'), 1.35, 5.74), Cyl(0.22, 0.22, 0.1, M.main)),
+      glow(B(0.56, 0.03, 0.24, M.get('light'), 1.35, 5.74), 'light'), Cyl(0.22, 0.22, 0.1, M.main)),
   },
   {
     id: 'stopsign', name: 'Stop Sign', cat: 'infrastructure', mat: 'plastic', color: '#c0392b',
@@ -224,10 +233,10 @@ export const LIBRARY = [
     build: (M) => G(B(0.1, 1.1, 0.1, M.main, -0.95), B(0.1, 1.1, 0.1, M.main, 0), B(0.1, 1.1, 0.1, M.main, 0.95), B(2, 0.09, 0.04, M.main, 0, 0.35, 0.06), B(2, 0.09, 0.04, M.main, 0, 0.8, 0.06)),
   },
   {
-    id: 'lamp', name: 'Floor Lamp', cat: 'decoration', mat: 'plastic', color: '#f4f4f2',
+    id: 'lamp', name: 'Floor Lamp', cat: 'decoration', mat: 'plastic', color: '#f4f4f2', interact: { verbs: ['Turn On', 'Turn Off'], initial: true, toggle: true },
     build: (M) => {
       const metal = M.get('darkmetal');
-      const bulb = new THREE.Mesh(cg('bulb', () => new THREE.SphereGeometry(0.08, 12, 8)), M.get('light'));
+      const bulb = glow(new THREE.Mesh(cg('bulb', () => new THREE.SphereGeometry(0.08, 12, 8)), M.get('light')), 'light');
       bulb.position.y = 1.5;
       return G(Cyl(0.18, 0.2, 0.04, metal), Cyl(0.018, 0.018, 1.45, metal, 0, 0.04), bulb, Cyl(0.14, 0.24, 0.3, M.main, 0, 1.4));
     },
@@ -246,8 +255,13 @@ export const LIBRARY = [
   { id: 'halffloor', name: 'Half Floor', cat: 'structures', mat: 'wood', build: (M) => G(B(4, 0.2, 2, M.main)) },
   { id: 'railing', name: 'Railing', cat: 'structures', mat: 'metal', build: (M) => G(B(4, 0.06, 0.08, M.main, 0, 1.0), B(4, 0.05, 0.05, M.main, 0, 0.5), ...[-1.95, -1, 0, 1, 1.95].map((x) => B(0.06, 1.06, 0.06, M.main, x))) },
   {
-    id: 'garage', name: 'Garage Wall', cat: 'structures', mat: 'brick',
-    build: (M) => { const door = M.get('metal', '#d0d4d8'); const p = [B(0.5, 3, 0.25, M.main, -1.75), B(0.5, 3, 0.25, M.main, 1.75), B(3, 0.5, 0.25, M.main, 0, 2.5)]; for (let i = 0; i < 5; i++) p.push(B(3, 0.48, 0.08, door, 0, i * 0.5)); return G(p); },
+    id: 'garage', name: 'Garage Wall', cat: 'structures', mat: 'brick', interact: { verbs: ['Open Garage', 'Close Garage'] },
+    build: (M) => {
+      const door = M.get('metal', '#d0d4d8');
+      const panels = []; for (let i = 0; i < 5; i++) panels.push(B(3, 0.48, 0.08, door, 0, -2.5 + i * 0.5));
+      return G(B(0.5, 3, 0.25, M.main, -1.75), B(0.5, 3, 0.25, M.main, 1.75), B(3, 0.5, 0.25, M.main, 0, 2.5),
+        P(0, 2.5, 0, { prop: 'scale', axis: 'y', closed: 1, open: 0.04 }, panels));
+    },
   },
   {
     id: 'shopwindow', name: 'Shop Window', cat: 'structures', mat: 'metal', color: '#3a3f46',
@@ -269,8 +283,11 @@ export const LIBRARY = [
 
   // ---------------- MORE INFRASTRUCTURE ----------------
   {
-    id: 'trafficlight', name: 'Traffic Light', cat: 'infrastructure', mat: 'darkmetal',
-    build: (M) => { const L = (c, y) => Mx('tl', () => new THREE.SphereGeometry(0.12, 12, 8), M.get('plastic', c), 0, y, 0.18); return G(Cyl(0.08, 0.1, 3.2, M.main), B(0.4, 1.1, 0.35, M.main, 0, 3.2), L('#e74c3c', 4.05), L('#f1c40f', 3.75), L('#2ecc71', 3.45)); },
+    id: 'trafficlight', name: 'Traffic Light', cat: 'infrastructure', mat: 'darkmetal', cycle: true,
+    build: (M) => {
+      const L = (k, y) => glow(Mx('tl', () => new THREE.SphereGeometry(0.12, 12, 8), M.get('plastic', '#222'), 0, y, 0.18), k);
+      return G(Cyl(0.08, 0.1, 3.2, M.main), B(0.4, 1.1, 0.35, M.main, 0, 3.2), L('tl0', 4.05), L('tl1', 3.75), L('tl2', 3.45));
+    },
   },
   {
     id: 'crosswalk', name: 'Crosswalk', cat: 'infrastructure', mat: 'asphalt',
@@ -350,7 +367,10 @@ export const LIBRARY = [
       return G(p);
     },
   },
-  { id: 'tv', name: 'TV', cat: 'decoration', mat: 'darkmetal', build: (M) => G(B(0.5, 0.04, 0.25, M.main), B(0.06, 0.4, 0.06, M.main, 0, 0.04), B(1.4, 0.8, 0.06, M.main, 0, 0.4), B(1.32, 0.72, 0.01, M.get('plastic', '#0d1117'), 0, 0.44, 0.031)) },
+  {
+    id: 'tv', name: 'TV', cat: 'decoration', mat: 'darkmetal', interact: { verbs: ['Turn On TV', 'Turn Off TV'], toggle: true },
+    build: (M) => G(B(0.5, 0.04, 0.25, M.main), B(0.06, 0.4, 0.06, M.main, 0, 0.04), B(1.4, 0.8, 0.06, M.main, 0, 0.4), glow(B(1.32, 0.72, 0.01, M.get('plastic', '#0d1117'), 0, 0.44, 0.031), 'screen')),
+  },
   {
     id: 'fountain', name: 'Fountain', cat: 'decoration', mat: 'stone',
     build: (M) => { const w = M.get('glass', '#5fa8d3'); return G(Cyl(1.5, 1.6, 0.5, M.main, 0, 0, 0, 32), Cyl(1.35, 1.35, 0.02, w, 0, 0.46, 0, 32), Cyl(0.18, 0.25, 1.4, M.main, 0, 0.5), Cyl(0.6, 0.25, 0.25, M.main, 0, 1.7), Cyl(0.5, 0.5, 0.02, w, 0, 1.92, 0, 24)); },
@@ -378,6 +398,39 @@ export const LIBRARY = [
       const ramp = B(0.6, 0.05, 3.8, M.main); ramp.position.set(0, 1.0, 0.78); ramp.rotation.x = 0.54;
       return G(...[[-0.35, -0.9], [0.35, -0.9], [-0.35, -1.5], [0.35, -1.5]].map(([x, z]) => B(0.08, 2, 0.08, metal, x, 0, z)), B(0.8, 0.06, 0.7, M.main, 0, 1.9, -1.2), ramp);
     },
+  },
+
+  // ---------------- OPENABLE ----------------
+  {
+    id: 'doubledoor', name: 'Double Door', cat: 'structures', mat: 'concrete', interact: { verbs: ['Open Doors', 'Close Doors'] },
+    build: (M) => {
+      const wood = M.get('wood', '#7a5236'), metal = M.get('darkmetal');
+      const handle = (x) => B(0.04, 0.3, 0.05, metal, x, 1.0, 0.06);
+      return G(B(1, 3, 0.25, M.main, -1.5), B(1, 3, 0.25, M.main, 1.5), B(2, 0.75, 0.25, M.main, 0, 2.25),
+        P(-1, 0, 0, { prop: 'rotation', axis: 'y', closed: 0, open: -1.7 }, B(0.99, 2.24, 0.07, wood, 0.5, 0.01), handle(0.9)),
+        P(1, 0, 0, { prop: 'rotation', axis: 'y', closed: 0, open: 1.7 }, B(0.99, 2.24, 0.07, wood, -0.5, 0.01), handle(-0.9)));
+    },
+  },
+  {
+    id: 'gate', name: 'Garden Gate', cat: 'decoration', mat: 'wood', interact: { verbs: ['Open Gate', 'Close Gate'] },
+    build: (M) => {
+      const bars = [B(1.86, 0.09, 0.05, M.main, 0.95, 0.3), B(1.86, 0.09, 0.05, M.main, 0.95, 0.85)];
+      for (let i = 0; i < 6; i++) bars.push(B(0.08, 1.0, 0.04, M.main, 0.12 + i * 0.33, 0.1));
+      return G(B(0.12, 1.3, 0.12, M.main, -1.02), B(0.12, 1.3, 0.12, M.main, 1.02), P(-0.95, 0, 0, { prop: 'rotation', axis: 'y', closed: 0, open: -1.6 }, bars));
+    },
+  },
+  {
+    id: 'chest', name: 'Treasure Chest', cat: 'decoration', mat: 'wood', color: '#b07a4a', interact: { verbs: ['Open Chest', 'Close Chest'] },
+    build: (M) => {
+      const band = M.get('metal', '#d4af37');
+      return G(B(1, 0.5, 0.6, M.main), B(0.9, 0.04, 0.5, M.get('metal', '#ffd23f'), 0, 0.42), B(1.02, 0.06, 0.62, band, 0, 0.44),
+        P(0, 0.5, -0.3, { prop: 'rotation', axis: 'x', closed: 0, open: -1.9 }, B(1, 0.22, 0.6, M.main, 0, 0, 0.3), B(1.02, 0.05, 0.62, band, 0, 0.2, 0.3), B(0.12, 0.14, 0.04, band, 0, 0.02, 0.61)));
+    },
+  },
+  {
+    id: 'trapdoor', name: 'Trapdoor Floor', cat: 'structures', mat: 'wood', interact: { verbs: ['Open Trapdoor', 'Close Trapdoor'] },
+    build: (M) => G(B(4, 0.2, 1.4, M.main, 0, 0, 1.3), B(4, 0.2, 1.4, M.main, 0, 0, -1.3), B(1.4, 0.2, 1.2, M.main, 1.3), B(1.4, 0.2, 1.2, M.main, -1.3),
+      P(-0.6, 0, 0, { prop: 'rotation', axis: 'z', closed: 0, open: 1.9 }, B(1.2, 0.12, 1.2, M.get('wood', '#8a5a3a'), 0.6, 0.08), B(0.06, 0.04, 0.3, M.get('darkmetal'), 1.0, 0.2))),
   },
 
   // ---------------- BIRD STUFF ----------------
@@ -409,8 +462,13 @@ export const LIBRARY = [
     },
   },
   {
-    id: 'birdswing', name: 'Bird Swing', cat: 'birds', mat: 'wood',
-    build: (M) => { const metal = M.get('metal'); return G(B(0.1, 2.2, 0.1, M.main, -0.8), B(0.1, 2.2, 0.1, M.main, 0.8), B(1.7, 0.1, 0.1, M.main, 0, 2.2), Cyl(0.01, 0.01, 1.0, metal, -0.3, 1.2), Cyl(0.01, 0.01, 1.0, metal, 0.3, 1.2), Mx('swingbar', () => new THREE.CylinderGeometry(0.035, 0.035, 0.7, 10).rotateZ(Math.PI / 2), M.main, 0, 1.2, 0)); },
+    id: 'birdswing', name: 'Bird Swing', cat: 'birds', mat: 'wood', interact: { verbs: ['Push Swing', 'Push Swing'], swing: true },
+    build: (M) => {
+      const metal = M.get('metal');
+      const sw = P(0, 2.2, 0, { prop: 'rotation', axis: 'x', swing: true }, Cyl(0.01, 0.01, 1.0, metal, -0.3, -1.0), Cyl(0.01, 0.01, 1.0, metal, 0.3, -1.0),
+        Mx('swingbar', () => new THREE.CylinderGeometry(0.035, 0.035, 0.7, 10).rotateZ(Math.PI / 2), M.main, 0, -1.0, 0));
+      return G(B(0.1, 2.2, 0.1, M.main, -0.8), B(0.1, 2.2, 0.1, M.main, 0.8), B(1.7, 0.1, 0.1, M.main, 0, 2.2), sw);
+    },
   },
   {
     id: 'statue', name: 'Bird Statue', cat: 'birds', mat: 'metal', color: '#d4af37',

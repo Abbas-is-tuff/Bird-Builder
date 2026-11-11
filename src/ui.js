@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 // All HTML interface: main menu, HUD, joystick, building library, inspector,
 // settings, dialogs and toasts.
 import { CATEGORIES, LIBRARY, LIB, getThumbnails } from './library.js';
@@ -70,6 +71,7 @@ export class UI {
       <div class="hint hidden" id="hint"></div>
       <div class="joy" id="joy"><div class="knob"></div></div>
       <div class="crosshair hidden" id="crosshair"></div>
+      <button class="useprompt hidden" id="usePrompt"><span class="key">E</span><span id="useLabel"></span></button>
       <div class="flypad" id="flypad">
         <button class="btn fly lockbtn" data-a="shiftLock" id="lockBtn" aria-label="Shift lock">${icon('aim')}<span>LOCK</span></button>
         <button class="btn fly" id="flyUp" aria-label="Fly up">${icon('raise')}<span>FLY</span></button>
@@ -110,6 +112,7 @@ export class UI {
           <div id="inspBody"></div>
         </div>
         <div class="actions">
+          <button class="btn primary hidden" data-a="useSel" id="useSelBtn"></button>
           <button class="btn" data-a="duplicate">${icon('copy')} Duplicate</button>
           <button class="btn danger" data-a="delete">${icon('trash')} Delete</button>
         </div>
@@ -172,6 +175,7 @@ export class UI {
     joy.addEventListener('pointerup', end);
     joy.addEventListener('pointercancel', end);
 
+    $('#usePrompt').addEventListener('click', () => this.usePrompt());
     const hold = (el, v) => {
       el.addEventListener('pointerdown', (e) => { el.setPointerCapture(e.pointerId); this.fly = v; el.classList.add('on'); });
       const rel = () => { if (this.fly === v) this.fly = 0; el.classList.remove('on'); };
@@ -182,6 +186,36 @@ export class UI {
     window.addEventListener('resize', () => this.layout());
     this.refreshBird();
     setTimeout(() => { this.portraits ??= getBirdPortraits(); this.refreshBird(); }, 120);
+  }
+
+  // "Open Door" style pop-up when the bird is next to something usable
+  updatePrompt(now) {
+    const el = $('#usePrompt');
+    const blocked = this.inMenu || this.build.mode === 'place' || !$('#library').classList.contains('hidden')
+      || !$('#modalLayer').classList.contains('hidden') || (this.build.selected && !this.isWide());
+    if (blocked) { el.classList.add('hidden'); this.promptId = null; return; }
+    if (!this._pt || now - this._pt > 120) {
+      this._pt = now;
+      const pl = this.app.player;
+      this.promptId = this.build.nearestInteractable(pl.pos.clone().setY(pl.pos.y + 0.7));
+    }
+    const o = this.promptId != null && this.build.get(this.promptId);
+    if (!o) { el.classList.add('hidden'); return; }
+    const b = new THREE.Box3().setFromObject(o.root);
+    const c = b.getCenter(new THREE.Vector3());
+    c.y = Math.min(b.max.y, this.app.player.pos.y + 2.4);
+    const v = c.project(this.app.camera);
+    const x = Math.min(innerWidth - 90, Math.max(90, (v.x + 1) / 2 * innerWidth));
+    const y = Math.min(innerHeight - 240, Math.max(110, (1 - v.y) / 2 * innerHeight));
+    el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+    $('#useLabel').textContent = this.build.interactLabel(this.promptId);
+    el.querySelector('.key').classList.toggle('hidden', !matchMedia('(pointer:fine)').matches);
+    el.classList.remove('hidden');
+  }
+  usePrompt() {
+    if (this.promptId == null) return;
+    this.build.interact(this.promptId);
+    $('#useLabel').textContent = this.build.interactLabel(this.promptId);
   }
 
   onShiftLock(on) {
@@ -247,6 +281,7 @@ export class UI {
         <div><i>2</i><span>Hold <b>FLY</b> to take off, <b>LAND</b> to come down${touch ? '' : ' (Space / X)'}.</span></div>
         <div><i>3</i><span>Tap <b>BUILD</b>, pick something, then <b>tap the ground</b> to place it — or press <b>PLACE</b> to drop it in front of you.</span></div>
         <div><i>4</i><span><b>Tap anything</b> you built to move, recolour or delete it. Made a mistake? Press <b>Undo</b>.</span></div>
+        <div><i>★</i><span>Walk up to a <b>door, window, lamp or chest</b> and tap the button that pops up to use it${touch ? '' : ' (or press E)'}.</span></div>
         <div><i>★</i><span>Tip: turn on <b>LOCK</b>${touch ? '' : ' (Shift)'} to aim with a <b>+</b> — whatever you're building goes exactly where you point.</span></div>
       </div>
       <div class="foot"><button class="btn primary" data-a="tutorialDone">Let's build!</button></div>`);
@@ -300,6 +335,7 @@ export class UI {
       this.toast(next === 'off' ? 'Mirror OFF' : 'Mirror line set where your bird stands');
     },
     flip() { this.build.flipSelected(); },
+    useSel() { const id = this.build.selectedId; if (id != null) { this.build.interact(id); this.renderInspector(); } },
     patTall() {
       const p = this.build.pattern;
       this.build.setPattern({ tall: p.tall % 4 + 1 });
@@ -426,6 +462,9 @@ export class UI {
     if (!o) return;
     const d = o.data, def = LIB[d.type];
     $('#inspTitle').innerHTML = `${esc(def.name)} <small>#${d.id}</small>`;
+    const ub = $('#useSelBtn');
+    ub.classList.toggle('hidden', !this.build.canInteract(d.id));
+    ub.textContent = this.build.interactLabel(d.id);
     $('#inspTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === this.inspTab));
     const body = $('#inspBody');
     if (this.inspTab === 'move') {
